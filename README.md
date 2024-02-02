@@ -1,6 +1,6 @@
 # OpenVPN with xorpatch sources
 
-OpenVPN with added support for the [Tunnelblick obfuscation](https://tunnelblick.net/cOpenvpn_xorpatch.html) patch.  
+[OpenVPN](https://github.com/OpenVPN/openvpn) with added support for the [Tunnelblick obfuscation](https://tunnelblick.net/cOpenvpn_xorpatch.html) patch.  
 Patched OpenVPN can be useful to prevent OpenVPN traffic from being detected by censorship mechanisms, such as in China and Russia.
 
 ## Scramble Option Syntax
