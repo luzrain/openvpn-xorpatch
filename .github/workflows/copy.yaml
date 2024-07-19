@@ -1,0 +1,44 @@
+name: Copy patches
+
+on:
+  workflow_dispatch:
+
+jobs:
+  copy_patches:
+    name: Copy Tunnelblick patches
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout Tunnelblick source code
+        uses: actions/checkout@v4
+        with:
+          repository: Tunnelblick/Tunnelblick
+          ref: master
+          path: Tunnelblick
+
+      - name: Copy patches
+        run: |
+          for dir in Tunnelblick/third_party/sources/openvpn/*/; do
+            TAG=`echo $dir | grep -oE '[0-9]+.[0-9]+.[0-9]+'`
+          
+            if [[ "$TAG" == "" ]]; then
+              exit 1
+            fi
+          
+            if [ ! -d patches/v$TAG/ ]; then
+              echo "Copy v$TAG patches"
+              mkdir patches/v$TAG/
+              cp `echo $dir`patches/*openvpn_xorpatch*.diff patches/v$TAG/
+            fi
+          done
+
+      - name: Remove Tunnelblick source code
+        run: rm -rf Tunnelblick
+
+      - name: Commit patches
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: New patches
+          branch: master

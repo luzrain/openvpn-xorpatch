@@ -1,4 +1,4 @@
-name: Build
+name: Build sources
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
         run: |
           if [ -d ${{ github.workspace }}/patches/${{ env.OPENVPN_VERSION }}/ ]; then
             for patch_file in $(ls ${{ github.workspace }}/patches/${{ env.OPENVPN_VERSION }}/*.diff); do
-          	  patch -p1 -N -i $patch_file
+              patch -p1 -N -i $patch_file
             done
             git diff
           else
