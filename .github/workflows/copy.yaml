@@ -20,19 +20,25 @@ jobs:
 
       - name: Copy patches
         run: |
+          counter=0
           for dir in Tunnelblick/third_party/sources/openvpn/*/; do
             TAG=`echo $dir | grep -oE '[0-9]+.[0-9]+.[0-9]+'`
-          
+
             if [[ "$TAG" == "" ]]; then
               exit 1
             fi
-          
+
             if [ ! -d patches/v$TAG/ ]; then
+              counter=$((counter + 1))
               echo "Copy v$TAG patches"
               mkdir patches/v$TAG/
               cp `echo $dir`patches/*openvpn_xorpatch*.diff patches/v$TAG/
             fi
           done
+
+          if (( counter == 0 )); then
+            echo "No new versions found."
+          fi
 
       - name: Remove Tunnelblick source code
         run: rm -rf Tunnelblick
@@ -40,5 +46,5 @@ jobs:
       - name: Commit patches
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: New patches
+          commit_message: Add new patches from Tunnelblick
           branch: master
