@@ -1,16 +1,43 @@
 name: Build sources
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
+  discover-new-patches:
+    runs-on: ubuntu-22.04
+    outputs:
+      versions: ${{ steps.list-versions.outputs.versions }}
+      proceed: ${{ steps.list-versions.outputs.proceed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate new versions matrix
+        id: list-versions
+        run: |
+          git fetch --tags
+          TAGS_VERSIONS=$(git tag -l 'v*' | sort)
+          PATCH_VERSIONS=$(find patches -maxdepth 1 -type d -name "v*" -printf "%f\n" | sort)
+          NEW_VERSIONS=$(comm -13 <(echo "$TAGS_VERSIONS") <(echo "$PATCH_VERSIONS"))
+          JSON=$(printf '%s\n' "${NEW_VERSIONS[@]}" | jq -R 'select(length > 0)' | jq -sc '{versions: .}')
+          if [ -z "$NEW_VERSIONS" ]; then
+            echo "No new versions found."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New versions found:"
+            echo "$NEW_VERSIONS"
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "versions=$JSON" >> $GITHUB_OUTPUT
+
   patch_sources:
     name: Patch openvpn sources
     runs-on: ubuntu-22.04
-    env:
-      OPENVPN_VERSION: ${{ github.ref_name }}
+    needs: discover-new-patches
+    if: ${{ needs.discover-new-patches.outputs.proceed == 'true' }}
+    strategy:
+      matrix: ${{ fromJson(needs.discover-new-patches.outputs.versions) }}
     steps:
       - name: Install dependencies
         run: sudo apt update && sudo apt install -y liblzo2-dev libpam0g-dev liblz4-dev libcap-ng-dev libnl-genl-3-dev linux-libc-dev man2html libcmocka-dev python3-docutils libtool automake autoconf libssl-dev libpkcs11-helper1-dev softhsm2 gnutls-bin
@@ -22,19 +49,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: OpenVPN/openvpn
-          ref: ${{ env.OPENVPN_VERSION }}
+          ref: ${{ matrix.versions }}
           path: openvpn
 
       - name: Apply patches
         working-directory: openvpn
         run: |
-          if [ -d ${{ github.workspace }}/patches/${{ env.OPENVPN_VERSION }}/ ]; then
-            for patch_file in $(ls ${{ github.workspace }}/patches/${{ env.OPENVPN_VERSION }}/*.diff); do
+          if [ -d ${{ github.workspace }}/patches/${{ matrix.versions }}/ ]; then
+            for patch_file in $(ls ${{ github.workspace }}/patches/${{ matrix.versions }}/*.diff); do
               patch -p1 -N -i $patch_file
             done
             git diff
           else
-            echo Patches for version ${{ env.OPENVPN_VERSION }} not found
+            echo Patches for version ${{ matrix.versions }} not found
             exit 1
           fi
 
@@ -45,9 +72,12 @@ jobs:
           ./configure
           make dist-gzip
 
-      - name: Upload dist
-        uses: svenstaro/upload-release-action@v2
+      - name: Release
+        uses: softprops/action-gh-release@v2
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file_glob: true
-          file: ${{ github.workspace }}/openvpn/openvpn-*.tar.gz
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ matrix.versions }}
+          name: ${{ matrix.versions }}
+          body: 'OpenVPN ${{ matrix.versions }} with xorpatch'
+          files: ${{ github.workspace }}/openvpn/openvpn-*.tar.gz
+          make_latest: true
