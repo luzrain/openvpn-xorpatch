@@ -11,7 +11,7 @@ jobs:
       proceed: ${{ steps.list-versions.outputs.proceed }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Generate new versions matrix
         id: list-versions
@@ -43,10 +43,10 @@ jobs:
         run: sudo apt update && sudo apt install -y liblzo2-dev libpam0g-dev liblz4-dev libcap-ng-dev libnl-genl-3-dev linux-libc-dev man2html libcmocka-dev python3-docutils libtool automake autoconf libssl-dev libpkcs11-helper1-dev softhsm2 gnutls-bin
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Checkout openvpn source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: OpenVPN/openvpn
           ref: ${{ matrix.versions }}
