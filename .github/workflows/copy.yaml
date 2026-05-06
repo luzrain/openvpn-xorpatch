@@ -3,7 +3,7 @@ name: Copy patches
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 */2 * *'
+    - cron: '0 1 */2 * *'
 
 jobs:
   copy_patches:

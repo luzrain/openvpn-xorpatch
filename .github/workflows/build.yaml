@@ -2,6 +2,8 @@ name: Build sources
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 2 */2 * *'
 
 jobs:
   discover-new-patches:
