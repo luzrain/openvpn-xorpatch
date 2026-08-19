@@ -5,24 +5,43 @@ on:
   schedule:
     - cron: '0 2 */2 * *'
 
+concurrency:
+  group: build-sources
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   discover-new-patches:
     runs-on: ubuntu-22.04
     outputs:
       versions: ${{ steps.list-versions.outputs.versions }}
       proceed: ${{ steps.list-versions.outputs.proceed }}
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
+        with:
+          ref: main
 
       - name: Generate new versions matrix
         id: list-versions
         run: |
           git fetch --tags
           TAGS_VERSIONS=$(git tag -l 'v*' | sort)
-          PATCH_VERSIONS=$(find patches -maxdepth 1 -type d -name "v*" -printf "%f\n" | sort)
+
+          PATCH_VERSIONS=$(find patches \
+            -maxdepth 1 \
+            -type d \
+            -regextype posix-extended \
+            -regex 'patches/v[0-9]+\.[0-9]+\.[0-9]+' \
+            -printf "%f\n" | sort)
+
           NEW_VERSIONS=$(comm -13 <(echo "$TAGS_VERSIONS") <(echo "$PATCH_VERSIONS"))
-          JSON=$(printf '%s\n' "${NEW_VERSIONS[@]}" | jq -R 'select(length > 0)' | jq -sc '{versions: .}')
+          JSON=$(printf '%s\n' "$NEW_VERSIONS" | jq -R 'select(length > 0)' | jq -sc '{versions: .}')
+
           if [ -z "$NEW_VERSIONS" ]; then
             echo "No new versions found."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
@@ -31,7 +50,8 @@ jobs:
             echo "$NEW_VERSIONS"
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "versions=$JSON" >> $GITHUB_OUTPUT
+
+          echo "versions=$JSON" >> "$GITHUB_OUTPUT"
 
   patch_sources:
     name: Patch openvpn sources
@@ -39,16 +59,19 @@ jobs:
     needs: discover-new-patches
     if: ${{ needs.discover-new-patches.outputs.proceed == 'true' }}
     strategy:
+      fail-fast: false
       matrix: ${{ fromJson(needs.discover-new-patches.outputs.versions) }}
     steps:
       - name: Install dependencies
         run: sudo apt update && sudo apt install -y liblzo2-dev libpam0g-dev liblz4-dev libcap-ng-dev libnl-genl-3-dev linux-libc-dev man2html libcmocka-dev python3-docutils libtool automake autoconf libssl-dev libpkcs11-helper1-dev softhsm2 gnutls-bin
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
+        with:
+          ref: main
 
       - name: Checkout openvpn source code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: OpenVPN/openvpn
           ref: ${{ matrix.versions }}
@@ -57,16 +80,26 @@ jobs:
       - name: Apply patches
         working-directory: openvpn
         run: |
-          if [ -d ${{ github.workspace }}/patches/${{ matrix.versions }}/ ]; then
-            for patch_file in $(ls ${{ github.workspace }}/patches/${{ matrix.versions }}/*.diff); do
-              patch -p1 -N -i $patch_file
-            done
-            git diff
-          else
-            echo Patches for version ${{ matrix.versions }} not found
+          patch_dir="${{ github.workspace }}/patches/${{ matrix.versions }}"
+
+          if [ ! -d "$patch_dir" ]; then
+            echo "Patches for version ${{ matrix.versions }} not found"
             exit 1
           fi
 
+          shopt -s nullglob
+          patch_files=("$patch_dir"/*.diff)
+
+          if (( ${#patch_files[@]} == 0 )); then
+            echo "No patch files found for version ${{ matrix.versions }}"
+            exit 1
+          fi
+
+          for patch_file in "${patch_files[@]}"; do
+            patch --batch -p1 -N -i "$patch_file"
+          done
+
+          git diff
       - name: Create dist
         working-directory: openvpn
         run: |
@@ -75,11 +108,12 @@ jobs:
           make dist-gzip
 
       - name: Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ matrix.versions }}
           name: ${{ matrix.versions }}
           body: 'OpenVPN ${{ matrix.versions }} with xorpatch'
           files: ${{ github.workspace }}/openvpn/openvpn-*.tar.gz
-          make_latest: true
+          fail_on_unmatched_files: true
+          make_latest: legacy

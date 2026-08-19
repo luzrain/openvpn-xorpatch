@@ -11,10 +11,12 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
+        with:
+          ref: main
 
       - name: Checkout Tunnelblick source code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: Tunnelblick/Tunnelblick
           ref: main
@@ -24,17 +26,22 @@ jobs:
         run: |
           counter=0
           for dir in Tunnelblick/third_party/sources/openvpn/*/; do
-            TAG=`echo $dir | grep -oE '[0-9]+.[0-9]+.[0-9]+'`
+            dirname=$(basename "$dir")
 
-            if [[ "$TAG" == "" ]]; then
-              exit 1
+            # Only accept names exactly like: openvpn-2.6.22
+
+            if [[ ! "$dirname" =~ ^openvpn-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              echo "Skip $dirname"
+              continue
             fi
 
-            if [ ! -d patches/v$TAG/ ]; then
+            TAG="${BASH_REMATCH[1]}"
+
+            if [ ! -d "patches/v$TAG/" ]; then
               counter=$((counter + 1))
               echo "Copy v$TAG patches"
-              mkdir patches/v$TAG/
-              cp `echo $dir`patches/*openvpn_xorpatch*.diff patches/v$TAG/
+              mkdir -p "patches/v$TAG/"
+              cp "$dir"patches/*openvpn_xorpatch*.diff "patches/v$TAG/"
             fi
           done
 
@@ -46,7 +53,7 @@ jobs:
         run: rm -rf Tunnelblick
 
       - name: Commit patches
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: Add new patches from Tunnelblick
           branch: main
