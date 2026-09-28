@@ -19,6 +19,7 @@ jobs:
     outputs:
       versions: ${{ steps.list-versions.outputs.versions }}
       proceed: ${{ steps.list-versions.outputs.proceed }}
+      latest_version: ${{ steps.list-versions.outputs.latest_version }}
 
     steps:
       - name: Checkout
@@ -41,6 +42,7 @@ jobs:
 
           NEW_VERSIONS=$(comm -13 <(echo "$TAGS_VERSIONS") <(echo "$PATCH_VERSIONS"))
           JSON=$(printf '%s\n' "$NEW_VERSIONS" | jq -R 'select(length > 0)' | jq -sc '{versions: .}')
+          LATEST_VERSION=$(printf '%s\n' "$PATCH_VERSIONS" | sort -V | tail -n1)
 
           if [ -z "$NEW_VERSIONS" ]; then
             echo "No new versions found."
@@ -52,6 +54,7 @@ jobs:
           fi
 
           echo "versions=$JSON" >> "$GITHUB_OUTPUT"
+          echo "latest_version=$LATEST_VERSION" >> "$GITHUB_OUTPUT"
 
   patch_sources:
     name: Patch openvpn sources
@@ -116,4 +119,4 @@ jobs:
           body: 'OpenVPN ${{ matrix.versions }} with xorpatch'
           files: ${{ github.workspace }}/openvpn/openvpn-*.tar.gz
           fail_on_unmatched_files: true
-          make_latest: legacy
+          make_latest: ${{ matrix.versions == needs.discover-new-patches.outputs.latest_version }}
